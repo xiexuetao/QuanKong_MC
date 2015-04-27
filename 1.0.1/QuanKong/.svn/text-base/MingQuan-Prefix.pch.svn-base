@@ -1,0 +1,205 @@
+//
+//  Prefix header
+//
+//  The contents of this file are implicitly included at the beginning of every source file.
+//
+
+#import <Availability.h>
+
+#ifndef __IPHONE_3_0
+#warning "This project uses features only available in iOS SDK 3.0 and later."
+#endif
+
+#ifdef __OBJC__
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
+#import <CommonCrypto/CommonDigest.h>
+#import "UINavigationItem+iOS7Spacing.h"
+#import "AFNetworking.h"
+#import "LoadingHUDView.h"
+#import "newAPILink.h"
+
+#endif
+
+#define  WIDTH    [[UIScreen mainScreen]bounds].size.width
+#define  HEIGHT   [[UIScreen mainScreen]bounds].size.height
+#define IPHONE5   ([UIScreen instancesRespondToSelector:@selector(currentMode)] ? CGSizeEqualToSize(CGSizeMake(640, 1136), [[UIScreen mainScreen] currentMode].size) : NO)
+
+#define ROCKCENT_ORANGE [UIColor colorWithRed:255.0/255.0 green:124.0/255.0 blue:0.0/255.0 alpha:1.0]
+#define BACKGROUND_COLOR [UIColor colorWithRed:244.0/255.0 green:247.0/255.0 blue:252.0/255.0 alpha:1.0]
+
+#define LIGHT_GRAY [UIColor colorWithRed:235.0/255.0 green:235.0/255.0 blue:235.0/255.0 alpha:1.0]
+
+//#define TEST_URL_HEAD @"http://uat.b.quancome.com:81/"
+//#define TEST_URL_IMAGE_HEAD @"http://uat.static.quancome.com/images/"
+
+#define APP_KEY_MC @"IOS_MC"
+
+#define HOTCOUPON_URL @"issue/phone/api/listHotCoupon.a"
+#define GOODCOUPON_URL @"issue/phone/api/listPreferentialCoupon.a"
+#define NEWCOUPON_URL @"issue/phone/api/listNewCoupon.a"
+#define NEAR_COUPON_URL @"issue/phone/api/listNearbyCoupon.a"
+
+//券的详情
+#define COUPON_DETAIL_URL @"issue/phone/api/viewCouponModelDetail.a"
+//店铺详情
+#define SHOP_DETAIL_URL @"issue/phone/api/listCouponStore.a"
+//浏览券
+#define BROWSING_COUPON_URL @"customer/phone/api/browsingCouponInAP.a"
+
+
+//添加到购物车
+#define ADD_TO_CART_URL @"customer/phone/api/addCouponToCartInAP.a"
+//从购物车删除
+#define DELETE_FORM_CART_URL @"customer/phone/api/deleteCouponInCarts.a"
+
+//立即购买
+#define ORDER_NOW_URL @"customer/phone/api/createCouponOrderNow.a"
+//直接获取
+#define GET_FREE_URL @"customer/phone/api/addFreeCoupon.a"
+//购物车购买
+#define ORDER_CART_URL @"customer/phone/api/createOrder.a"
+//收藏券
+#define COLLECT_URL @"customer/phone/api/addFavoriteInAP.a"
+//取消收藏
+#define DELETE_COLLECT_URL @"customer/phone/api/deleteFavorite.a"
+
+//订单详情
+#define ORDER_DETAIL_URL @"customer/phone/api/viewOrderDetail.a"
+//订单列表
+#define ORDER_LIST_METHOD @"customer.listOrder"
+//我的钱包
+#define MY_WLLET_URL @"customer/phone/api/viewWallet.a"
+//购物车详情
+#define MY_CART_URL @"customer/phone/api/listCartCoupon.a"
+
+//评论列表
+#define COMMENT_LIST_URL @"customer/login/api/listAllComment.a"
+//店铺列表
+#define SHOP_LIST_URL @"issue/phone/api/listCouponStore.a"
+//增加评论
+#define ADD_COMMENT_URL @"customer/phone/api/addComment.a"
+
+//钱包支付
+#define PAY_BY_WELLET_URL @"payment/phone/api/payByWallet.a"
+
+//获取券
+#define DONOTUSE_METHOD @"customer.listCouponWallet"
+
+//我的收藏
+#define COLLECTION_METHOD @"customer.listFavoriteCoupon"
+
+//查询券
+#define SHARE_URL @"issue/phone/api/listByName.a"
+
+//获取券兑换信息
+#define QRINFO_METHOD @"customer.createQrCode"
+
+//重设登录密码
+#define LOGIN_PASSWORD_METHOD @"customer.findPassByPhone.mc"
+
+//券的web路径
+#define TRANSLATION_WEBHEADER_URL @"http://b.quancome.com/"
+#define TRANSLATION_WEB_URL @"wechat/wechat/viewCouponModel.a"
+
+//券控协议
+#define PROTOCOL_WEB_URL @"http://static.quancome.com/protocol-app.html"
+
+//新浪微博登录
+#define kAppKey         @"1605188255"
+#define kRedirectURI    @"https://api.weibo.com/oauth2/default.html"
+//微信登录
+#define kWXAPP_ID @"wxd9fa07559da4c7b8"
+#define kWXAPP_SECRET @"c48eeee70379da1eded4fd310bdcb030"
+
+
+
+//网络连接错误提示
+#define INTNET_PROMPT_STRING @"亲网络不给力呢！"
+
+//注册时，给用户发送短信验证码
+#define REGISTER_CODE_METHOD @"service.sendSmsCode4Register"
+
+//检测用户是否存在
+#define CHECK_USER_EXIST_METHOD @"customer.checkCustExist"
+
+//第三方登录补充资料时，给用户发送短信验证码
+#define SUPPLEMENTARY_METHOD @"service.sendSmsCode4SupplementaryInfo"
+
+//获取重设交易密码验证码
+#define GET_PAY_PASSWORD_METHOD @"service.sendSmsCode4GetPayPassword"
+
+//获取重设交易密码已发送验证码
+#define GET_PAY_SEND_CODE_METHOD @"service.getSmsCode4GetPayPassword"
+
+//修改交易密码
+#define UPDATE_PAYPSW_METHOD @"customer.updatePayPass"
+
+//设置交易密码
+#define PAY_PASSWORD_METHOD @"customer.initPayPass"
+
+//获取重设登录密码验证码
+#define GET_LOGIN_PASSWORD_METHOD @"service.sendSmsCode4GetLoginPassword"
+
+//获取重设登录密码验证码
+#define GET_LOGIN_CODE_METHOD @"service.getSmsCode4GetLoginPassword"
+
+//设置登录密码
+#define SET_LOGIN_PASSWORD_METHOD @"customer.initPass"
+
+//查询券
+#define SEARCH_BY_KEY_METHOD @"custQuery.listCouponModel"
+
+//一级分类
+#define CLASS_TYPE_METHOD @"admin.queryIndustryGroup"
+
+//绑定手机
+#define ADD_PHONE_METHOD @"customer.bindingPhone"
+
+//个人券统计
+#define CUSTOMER_TOOTAL_METHOD @"custQuery.listCustomerAllTotal"
+
+//获取用户信息
+#define GET_CUSTOMER_METHOD @"customer.getCustomer"
+
+//第三方登录
+#define OTHER_LOGIN_METHOD @"customer.loginByOther"
+
+//手机号码登录
+#define LOGIN_METHOD @"customer.loginByApp.mc"
+
+//重设交易密码
+#define SET_PAY_PASSWORD_METHOD @"customer.findPayPassByPhone.mc"
+
+//修改登录密码
+#define UPDATE_LOGIN_PASSWORD_METHOD @"customer.updatePass.mc"
+
+//取消订单
+#define DELETE_ORDER_METHOD @"customer.cancleOrder"
+
+//获取订单子项
+#define ORDER_ITEM_METHOD @"customer.viewOrderDetail"
+
+//手机注册
+#define REGISTER_METHOD @"customer.registerByPhone.mc"
+
+//退出登录
+#define LOGOUT_METHOD @"customer.logoutByApp"
+
+//我的钱包
+#define CUSTOMER_WALLET_METHOD @"customer.getCustomerWallet"
+
+//
+#define INTNETPROMPT_STRING @"亲网络不给力呢！"
+
+//应用秘钥
+#define APPLY_SECRET @"4a33a4665aa8e2191aedf04783254082"
+
+//如果处于调试状态打印
+
+#ifdef DEBUG
+
+#define MyLog(format, ...) NSLog((@"[函数名:%s]" "[行号:%d]  " format), __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#else
+#define MyLog(...)
+#endif

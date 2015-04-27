@@ -1,0 +1,475 @@
+//
+//  QuanKongCategoryViewController.m
+//  QuanKong
+//
+//  Created by 谢雪滔 on 14/10/29.
+//  Copyright (c) 2014年 Rockcent. All rights reserved.
+//
+
+#import "QuanKongCategoryViewController.h"
+#import "EGORefreshTableHeaderView.h"
+#import "LoadMoreTableFooterView.h"
+#import "UserInfo.h"
+#import "QuanKongVoucher.h"
+#import "HTTPTool.h"
+#import "UIImageView+WebCache.h"
+#import "ExchangeViewController.h"
+#import "QuanKongCouponDetailViewController.h"
+#import "QuanKongNoPaymentViewController.h"
+#import "couponLIstViewCell.h"
+#import "QuanKongClass.h"
+
+#import "NSString+DisposeStr.h"
+#import "NSDate+Help.h"
+#import "UITableView+Help.h"
+
+#import "LoadingHUDView.h"
+#import "Prompt.h"
+
+@interface QuanKongCategoryViewController (){
+    
+    NSMutableArray *_data;
+    
+    EGORefreshTableHeaderView *egoRefreshTableHeaderView;
+    BOOL isRefreshing;
+    
+    LoadMoreTableFooterView *loadMoreTableFooterView;
+    BOOL isLoadMoreing;
+    
+    int dataRows;
+    
+    int state;//
+}
+
+@end
+
+@implementation QuanKongCategoryViewController
+
+
+- (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
+{
+    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+    if (self) {
+        
+        #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 70000
+        
+        if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7.0)
+        {
+            self.edgesForExtendedLayout = UIRectEdgeNone;
+            self.extendedLayoutIncludesOpaqueBars = NO;
+            self.modalPresentationCapturesStatusBarAppearance = NO;
+        }
+        
+        #endif
+        
+        //加入返回按钮
+        UIButton *backButton = [[UIButton alloc]initWithFrame:CGRectMake(0, 0, 46, 22)];
+        [backButton setBackgroundImage:[UIImage imageNamed:@"back_btn.png"] forState:UIControlStateNormal];
+        [backButton addTarget:self action:@selector(pushBack:) forControlEvents:UIControlEventTouchUpInside];
+        UIBarButtonItem *backItemButton = [[UIBarButtonItem alloc]initWithCustomView:backButton];
+        
+        [self.navigationItem setLeftBarButtonItem:backItemButton];
+        
+        [[UINavigationBar appearance] setTitleTextAttributes:@{NSForegroundColorAttributeName : [UIColor whiteColor]}];
+    }
+    return self;
+}
+
+/**
+ *  点击返回按钮处理
+ *
+ *  @param sender
+ */
+
+-(void)pushBack:(id)sender
+
+{
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+/**
+ *  初始化
+ */
+-(void)initEgoRefreshTable{
+    if (egoRefreshTableHeaderView == nil)
+    {
+        egoRefreshTableHeaderView = [[EGORefreshTableHeaderView alloc] initWithFrame:CGRectMake(0.0f, 0.0f - self.tableView.bounds.size.height, self.view.frame.size.width, self.tableView.bounds.size.height )];
+        egoRefreshTableHeaderView.delegate = self;
+        [self.tableView addSubview:egoRefreshTableHeaderView];
+    }
+    [egoRefreshTableHeaderView refreshLastUpdatedDate];
+    
+    if (_data.count>5) {
+        if (loadMoreTableFooterView == nil)
+        {
+            loadMoreTableFooterView = [[LoadMoreTableFooterView alloc] initWithFrame:CGRectMake(0.0f, self.tableView.contentSize.height, self.view.frame.size.width, self.tableView.bounds.size.height)];
+            loadMoreTableFooterView.delegate = self;
+            [self.tableView addSubview:loadMoreTableFooterView];
+        }
+    }else{
+        if (loadMoreTableFooterView != nil)
+        {
+            [loadMoreTableFooterView removeFromSuperview];
+        }
+    }
+    
+    [self reloadData];
+}
+
+- (void)reloadData
+{
+    [self.tableView reloadData];
+    [UITableView setExtraCellLineHidden:self.tableView];
+    loadMoreTableFooterView.frame = CGRectMake(0.0f, self.tableView.contentSize.height, self.view.frame.size.width, self.tableView.bounds.size.height);
+}
+
+-(void)viewWillAppear:(BOOL)animated{
+    [super viewWillAppear:animated];
+    [UITableView setExtraCellLineHidden:self.tableView];
+}
+
+#pragma mark UIScrollViewDelegate Methods
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    [egoRefreshTableHeaderView egoRefreshScrollViewDidScroll:scrollView];
+    [loadMoreTableFooterView loadMoreScrollViewDidScroll:scrollView];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    [egoRefreshTableHeaderView egoRefreshScrollViewDidEndDragging:scrollView];
+    [loadMoreTableFooterView loadMoreScrollViewDidEndDragging:scrollView];
+}
+
+#pragma mark EGORefreshTableHeaderDelegate Methods
+
+- (void)egoRefreshTableHeaderDidTriggerRefresh:(EGORefreshTableHeaderView*)view
+{
+    isRefreshing = YES;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // waiting for loading data from internet
+        sleep(2);
+        //        dataRows = 20; // show first 20 records after refreshing
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            // complete refreshing
+            isRefreshing = NO;
+            [self reloadData];
+            
+            [egoRefreshTableHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:self.tableView];
+        });
+    });
+}
+
+
+- (BOOL)egoRefreshTableHeaderDataSourceIsLoading:(EGORefreshTableHeaderView*)view
+{
+    return isRefreshing;
+}
+
+
+- (NSDate*)egoRefreshTableHeaderDataSourceLastUpdated:(EGORefreshTableHeaderView*)view
+{
+    return [NSDate date];
+}
+
+#pragma mark LoadMoreTableFooterDelegate Methods
+
+- (void)loadMoreTableFooterDidTriggerLoadMore:(LoadMoreTableFooterView*)view
+{
+    isLoadMoreing = YES;
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // waiting for loading data from internet
+        sleep(3);
+        
+        
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            isLoadMoreing = NO;
+            [self getData];
+            [self reloadData];
+            //            dataRows = 20; // add 20 more records
+            [loadMoreTableFooterView loadMoreScrollViewDataSourceDidFinishedLoading:self.tableView];
+        });
+    });
+}
+
+- (BOOL)loadMoreTableFooterDataSourceIsLoading:(LoadMoreTableFooterView*)view
+{
+    return isLoadMoreing;
+}
+
+
+-(void)getData{
+    
+    NSString *str = [NSString stringWithFormat:@"%@%@&industryId=%li&pageSize=20&currentPage=%i&appKey=%@",NEW_HEAD_LINK,SEARCH_BY_KEY_METHOD,(long)self.cla.Id,dataRows,APP_KEY];
+    
+    [Prompt removerPromptViewWithView:self.view animated:YES];
+    [IntnetPrompt hideIntnetPromptForView:self.view animated:YES];
+    
+    [HTTPTool getWithPath:str success:^(id success) {
+        NSString * i = [success objectForKey:@"msg"];
+        if ([i isEqualToString:@"success"]) {
+            dataRows++;
+            //返回的数据全部的券
+            NSArray *arr = [success objectForKey:@"objList"];
+            for (int x=0; x<arr.count; x++) {
+                QuanKongVoucher *voucher = [QuanKongVoucher initWihtData:arr[x]];
+                [_data addObject:voucher];
+            }
+            [self initEgoRefreshTable];
+            
+            if (_data.count == 0) {
+                [Prompt showPromptWihtView:self.view message:@"该分类还没有券！"];
+            }
+            
+        }
+        [LoadingHUDView hideLoadingView];
+        
+    } fail:^(NSError *error) {
+       IntnetPrompt *intnet = [IntnetPrompt showIntnetPromptWithMessage:INTNET_PROMPT_STRING inView:self.view];
+        intnet.delegate = self;
+        [LoadingHUDView hideLoadingView];
+    }];
+}
+
+-(void)clickButtonOperation:(IntnetPrompt *)intnetView{
+    [self getData];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = [UIColor whiteColor];
+    _data = [NSMutableArray array];
+    state = -1;
+    isRefreshing = NO;
+    isLoadMoreing = NO;
+    dataRows = 1;
+    self.navigationItem.title = self.cla.name;
+    [self createrTableView];
+    [self getData];
+    [LoadingHUDView showLoadinginView:self.view];
+}
+
+/**
+ *  创建tableview
+ */
+-(void)createrTableView{
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0 ,WIDTH, HEIGHT-50) style:UITableViewStylePlain];
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    [self.view addSubview:self.tableView];
+    [UITableView setExtraCellLineHidden:self.tableView];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+}
+
+#pragma mark - Table view data source
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 0)
+    {
+        return _data.count;
+    }
+    else {
+        return 1;
+    }
+}
+
+
+
+
+#pragma mark 每当有一个cell进入视野范围内就会调用，返回当前这行显示的cell
+-(UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+    self.voucher = _data[indexPath.row];
+    
+    NSString *identifier = [NSString stringWithFormat:@"status_%d",indexPath.section];
+    
+    couponLIstViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    
+    if (cell == nil) {
+        
+        cell = [[couponLIstViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+        
+        cell.backgroundColor = [UIColor whiteColor];
+        
+    }
+    
+    NSLog(@"%i",self.voucher.type);
+    
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    
+    //券的的图片
+    NSArray *arr = [self.voucher.picUrl componentsSeparatedByString:@";"];
+    [cell.logoImageView sd_setImageWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"%@%@",NEW_IMAGE_HEAD_LINK,arr[0]]] placeholderImage:[UIImage imageNamed:@"image_placeholder"] completed:nil];
+    
+    //券的名称
+    cell.titleLabel.text = self.voucher.name;
+    
+    //券的介绍
+    cell.introduceLabel.text = self.voucher.introduce;
+    
+    //券的类型
+    NSString *couponTypeStr = [NSString stringWithFormat:@"%i",self.voucher.type];
+    //券的折扣
+//    NSString *discountStr = [NSString stringWithFormat:@"%i",self.voucher.discount];
+    
+    //根据couponTypeStr对不同的
+    switch ([couponTypeStr intValue]) {
+        case 1:
+        {
+            
+            //销售价格
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_0.png"];
+            
+            NSString *estimateStr = [[NSString alloc]init];
+            
+            estimateStr = [NSString stringWithFormat:@"%@元",self.voucher.estimateAmount];
+            
+            NSMutableAttributedString *estimateAmountStr = [[NSMutableAttributedString alloc]initWithString:estimateStr];
+            
+            [estimateAmountStr addAttribute:NSForegroundColorAttributeName
+                                      value:[UIColor orangeColor]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            [estimateAmountStr addAttribute:NSFontAttributeName
+                                      value:[UIFont systemFontOfSize:19.0f]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            cell.valueLabel.attributedText = estimateAmountStr;
+            
+            //原价
+            float estimateStrLength = [NSString widthOfString:estimateStr withFont:[UIFont systemFontOfSize:19.0f]];
+            
+            NSString *faceStr = [NSString stringWithFormat:@"%@元",self.voucher.faceValue];
+            
+            NSMutableAttributedString *faceValueStr = [[NSMutableAttributedString alloc]initWithString:faceStr];
+            
+            [faceValueStr addAttribute:NSStrikethroughStyleAttributeName
+                                 value:[NSNumber numberWithInteger:NSUnderlinePatternSolid | NSUnderlineStyleSingle]
+                                 range:NSMakeRange(0, faceStr.length)];
+            
+            cell.cutValueLabel.frame = CGRectMake(105+estimateStrLength+5, 69, WIDTH-estimateStrLength-120, 20);
+            cell.cutValueLabel.attributedText = faceValueStr;
+            
+        }
+            break;
+        case 2:
+        {
+                
+            NSString *debitValueStr = [NSString stringWithFormat:@"%@元",self.voucher.debitAmount];
+            
+            NSString *miniAmountStr = [NSString stringWithFormat:@"%d",self.voucher.miniAmount];
+            
+            NSMutableAttributedString *debitStr = [[NSMutableAttributedString alloc]init];
+            
+            self.voucher.miniAmount == 0?(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"立减%@",debitValueStr]]):(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%@元减%@",miniAmountStr,debitValueStr]]);
+            
+            self.voucher.miniAmount == 0?[debitStr addAttribute:NSForegroundColorAttributeName
+                                                          value:[UIColor orangeColor]
+                                                          range:NSMakeRange(2, debitValueStr.length)]
+                                        :[debitStr addAttribute:NSForegroundColorAttributeName
+                                                          value:[UIColor orangeColor]
+                                                          range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+            
+            self.voucher.miniAmount == 0?[debitStr addAttribute:NSFontAttributeName
+                                                          value:[UIFont systemFontOfSize:19.0f]
+                                                          range:NSMakeRange(2, debitValueStr.length)]
+                                        :[debitStr addAttribute:NSFontAttributeName
+                                                          value:[UIFont systemFontOfSize:19.0f]
+                                                          range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+            
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_2.png"];
+            cell.valueLabel.textColor = [UIColor grayColor];
+            cell.valueLabel.font = [UIFont systemFontOfSize:12.0f];
+            
+            cell.valueLabel.attributedText = debitStr;
+            
+            cell.cutValueLabel.text = @"";
+        }
+            break;
+        case 3:
+        {
+            
+            NSString *discountStr = [[NSString alloc]init];
+            
+            self.voucher.discount%10 == 0?(discountStr = [NSString stringWithFormat:@"%.0f",self.voucher.discount*0.1]):(discountStr = [NSString stringWithFormat:@"%.1f",self.voucher.discount*0.1]);
+            
+            NSMutableAttributedString *countValueAtr = [[NSMutableAttributedString alloc]init];
+            NSString *miniAmountStr = [NSString stringWithFormat:@"%ld",(long)self.voucher.miniAmount];
+            
+            self.voucher.miniAmount == 0?(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"%@折",discountStr]]):(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%ld元享%@折",(long)self.voucher.miniAmount,discountStr]]);
+            
+            self.voucher.miniAmount == 0?[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                                               value:[UIColor orangeColor]
+                                                               range:NSMakeRange(0, 1+discountStr.length)]
+            :[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                   value:[UIColor orangeColor]
+                                   range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+            
+            self.voucher.miniAmount == 0?[countValueAtr addAttribute:NSFontAttributeName
+                                                               value:[UIFont systemFontOfSize:19.0f]
+                                                               range:NSMakeRange(0, 1+discountStr.length)]
+            :[countValueAtr addAttribute:NSFontAttributeName
+                                   value:[UIFont systemFontOfSize:19.0f]
+                                   range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_1.png"];
+            
+            cell.valueLabel.textColor = [UIColor grayColor];
+            cell.valueLabel.font = [UIFont systemFontOfSize:12.0f];
+            cell.valueLabel.attributedText = countValueAtr;
+            
+            cell.cutValueLabel.text = @"";
+        }
+            break;
+        default:
+            break;
+    }
+
+    return cell;
+}
+
+
+-(CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    return 95;
+}
+
+-(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    QuanKongCouponDetailViewController *couponDetailViewController = [[QuanKongCouponDetailViewController alloc]init];
+    
+    couponDetailViewController.hidesBottomBarWhenPushed = YES;
+    QuanKongVoucher *voucher = _data[indexPath.row];
+    
+    NSString *url = [NSString stringWithFormat:@"%@%@&businessAccount=%@&appKey=%@",NEW_HEAD_LINK,BUSINESS_CHANNEL_METHOD,BUSINESS,APP_KEY];
+    [HTTPTool getWithPath:url success:^(id success) {
+        NSString * i = [success objectForKey:@"event"];
+        NSArray *arr = [success objectForKey:@"objList"];
+        NSDictionary *business =  arr[0];
+        NSString *ID = [business objectForKey:@"id"];
+        if ([i isEqualToString:@"0"]) {
+            [couponDetailViewController getCouponDetailWithCouponID:[NSString stringWithFormat:@"%i",voucher.vocherId]And:ID];
+            [self.navigationController pushViewController:couponDetailViewController animated:YES];
+        }else{
+            [self.view.window showHUDWithText:[success objectForKey:@"msg"]  Enabled:YES];
+        }
+    } fail:^(NSError *error) {
+        [self.view.window showHUDWithText:@"网络连接失败"  Enabled:YES];
+    }];
+}
+
+#pragma mark 将button绘制成圆角
+-(void)drawnRoundedCorners:(UIButton *)but{
+    but.layer.masksToBounds = YES;
+    but.layer.cornerRadius = 3.f;
+}
+
+@end

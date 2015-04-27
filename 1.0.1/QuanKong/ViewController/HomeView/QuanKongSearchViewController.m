@@ -1,0 +1,525 @@
+//
+//  QuanKongSearchViewController.m
+//  QuanKong
+//
+//  Created by Rick on 14/12/2.
+//  Copyright (c) 2014年 Rockcent. All rights reserved.
+//
+
+#import "QuanKongSearchViewController.h"
+#import "QuanKongVoucher.h"
+#import "Prompt.h"
+#import "HTTPTool.h"
+#import "couponLIstViewCell.h"
+#import "UIImageView+WebCache.h"
+#import "LoadingHUDView.h"
+#import "IntnetPrompt.h"
+#import "UIWindow+AlertHud.h"
+#import "NSString+DisposeStr.h"
+#import "UITableView+Help.h"
+
+#import "QuanKongCouponDetailViewController.h"
+#import "AddictionInfoControllVIew.h"
+
+@interface QuanKongSearchViewController (){
+    NSMutableArray *_data;
+    
+    EGORefreshTableHeaderView *egoRefreshTableHeaderView;
+    BOOL isRefreshing;
+    
+    LoadMoreTableFooterView *loadMoreTableFooterView;
+    BOOL isLoadMoreing;
+    
+    int dataRows;
+    
+    UITableView *_tableView;
+    
+    UISearchBar *msearchBar;
+    
+    NSString *_searchText;
+}
+
+@end
+
+@implementation QuanKongSearchViewController
+
+- (void)viewDidLoad {
+    
+    self.view.backgroundColor = [UIColor whiteColor];
+    
+    self.edgesForExtendedLayout = UIRectEdgeNone;
+    self.view.backgroundColor = [UIColor whiteColor];
+    
+    _data = [NSMutableArray array];
+    isRefreshing = NO;
+    isLoadMoreing = NO;
+    dataRows = 1;
+    [super viewDidLoad];
+    [self initTableView];
+    [self initSearchBar];
+    [self createExitButt];
+    [self initEgoRefreshTable];
+}
+
+
+-(void)createExitButt{
+    
+    //取消按钮
+    UIButton * exitButt =[[UIButton alloc]initWithFrame:CGRectMake(0, 0, 50, 50)];
+    [exitButt setTitle:@"取消" forState:UIControlStateNormal];
+    exitButt.titleLabel.font=[UIFont systemFontOfSize:17.0f];
+    exitButt.tag = 100;
+    [exitButt addTarget:self action:@selector(clickBut:) forControlEvents:UIControlEventTouchUpInside];
+    
+    UIBarButtonItem * item=[[UIBarButtonItem alloc]initWithCustomView:exitButt];
+    self.navigationItem.rightBarButtonItem = item;
+    
+    self.navigationItem.leftBarButtonItem = nil;
+    
+}
+
+
+//取消按钮点击
+-(void)clickBut:(UIButton *)but{
+    [msearchBar resignFirstResponder];
+    [self dismissViewControllerAnimated:YES completion:^{
+        
+    }];
+}
+
+
+- (void)initSearchBar
+{
+    if (!msearchBar) {
+        msearchBar = [[UISearchBar alloc]initWithFrame:CGRectMake(0, 0, 180, 44)];
+        msearchBar.delegate = self;
+        msearchBar.backgroundImage = [UIImage imageNamed:@"searchBar_Bg.png"];
+        msearchBar.placeholder = @"请输入关键字";
+        msearchBar.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        msearchBar.showsCancelButton = NO;
+        [msearchBar setImage:[UIImage imageNamed:@"search_bar_icon"] forSearchBarIcon:UISearchBarIconSearch state:UIControlStateNormal];
+    }
+    
+    UIView *view = msearchBar.subviews[0];
+    
+    UITextField *textField = view.subviews[1];
+    textField.backgroundColor = [UIColor colorWithRed:249.0/255.0 green:103.0/255.0 blue:0 alpha:1.0];
+    textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    [textField setValue:[UIColor whiteColor] forKeyPath:@"_placeholderLabel.textColor"];
+    textField.textColor = [UIColor whiteColor];
+    textField.bounds = CGRectMake(0, 6,160, 32);    //    //透明色background
+    
+    self.navigationItem.titleView = msearchBar;
+    msearchBar.delegate = self;
+    
+}
+
+
+-(void)initTableView{
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, WIDTH, HEIGHT) style:UITableViewStylePlain];
+    self.view = _tableView;
+    _tableView.delegate = self;
+    _tableView.dataSource = self;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+}
+
+
+/**
+ *  初始化
+ */
+-(void)initEgoRefreshTable{
+    if (egoRefreshTableHeaderView == nil)
+    {
+        egoRefreshTableHeaderView = [[EGORefreshTableHeaderView alloc] initWithFrame:CGRectMake(0.0f, 0.0f - _tableView.bounds.size.height, self.view.frame.size.width, _tableView.bounds.size.height )];
+        egoRefreshTableHeaderView.delegate = self;
+        [_tableView addSubview:egoRefreshTableHeaderView];
+    }
+    [egoRefreshTableHeaderView refreshLastUpdatedDate];
+    
+    if (loadMoreTableFooterView == nil)
+    {
+        loadMoreTableFooterView = [[LoadMoreTableFooterView alloc] initWithFrame:CGRectMake(0.0f, _tableView.contentSize.height, self.view.frame.size.width, _tableView.bounds.size.height)];
+        loadMoreTableFooterView.delegate = self;
+        [_tableView addSubview:loadMoreTableFooterView];
+    }
+    
+    
+    [self reloadData];
+}
+
+- (void)reloadData
+{
+    [_tableView reloadData];
+
+    loadMoreTableFooterView.frame = CGRectMake(0.0f, _tableView.contentSize.height, self.view.frame.size.width, _tableView.bounds.size.height);
+    if (_data.count>5) {
+        loadMoreTableFooterView.hidden = NO;
+    }else{
+        loadMoreTableFooterView.hidden = YES;
+    }
+}
+
+-(void)viewWillAppear:(BOOL)animated{
+    [super viewWillAppear:animated];
+    [UITableView setExtraCellLineHidden:_tableView];
+    [msearchBar becomeFirstResponder];
+}
+
+#pragma mark UIScrollViewDelegate Methods
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    [egoRefreshTableHeaderView egoRefreshScrollViewDidScroll:scrollView];
+    [loadMoreTableFooterView loadMoreScrollViewDidScroll:scrollView];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    [egoRefreshTableHeaderView egoRefreshScrollViewDidEndDragging:scrollView];
+    [loadMoreTableFooterView loadMoreScrollViewDidEndDragging:scrollView];
+}
+
+#pragma mark EGORefreshTableHeaderDelegate Methods
+
+- (void)egoRefreshTableHeaderDidTriggerRefresh:(EGORefreshTableHeaderView*)view
+{
+    isRefreshing = YES;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // waiting for loading data from internet
+        sleep(2);
+        //        dataRows = 20; // show first 20 records after refreshing
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            // complete refreshing
+            isRefreshing = NO;
+            [self reloadData];
+            
+            [egoRefreshTableHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:_tableView];
+        });
+    });
+}
+
+
+- (BOOL)egoRefreshTableHeaderDataSourceIsLoading:(EGORefreshTableHeaderView*)view
+{
+    return isRefreshing;
+}
+
+
+- (NSDate*)egoRefreshTableHeaderDataSourceLastUpdated:(EGORefreshTableHeaderView*)view
+{
+    return [NSDate date];
+}
+
+#pragma mark LoadMoreTableFooterDelegate Methods
+
+- (void)loadMoreTableFooterDidTriggerLoadMore:(LoadMoreTableFooterView*)view
+{
+    isLoadMoreing = YES;
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // waiting for loading data from internet
+        sleep(3);
+        
+        
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            isLoadMoreing = NO;
+            dataRows++;
+            [self searchData:_searchText];
+            [self reloadData];
+            //            dataRows = 20; // add 20 more records
+            [loadMoreTableFooterView loadMoreScrollViewDataSourceDidFinishedLoading:_tableView];
+        });
+    });
+}
+
+- (BOOL)loadMoreTableFooterDataSourceIsLoading:(LoadMoreTableFooterView*)view
+{
+    return isLoadMoreing;
+}
+
+#pragma mark - UISearchBarDelegate方法
+
+-(BOOL)searchBarShouldBeginEditing:(UISearchBar *)searchBar{
+    return YES;
+}
+
+-(BOOL)searchBarShouldEndEditing:(UISearchBar *)searchBar{
+    return YES;
+}
+
+#pragma mark 实现取消按钮的方法
+- (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
+    NSLog(@"您点击了取消按钮");
+    // 丢弃第一使用者
+}
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+    
+    [searchBar resignFirstResponder];
+//    dataRows = 1;
+//    _searchText = searchBar.text;
+//    [_data removeAllObjects];
+//    [self searchData:_searchText];
+    NSLog(@"您点击了键盘上的Search按钮");
+}
+
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText{
+    
+    dataRows = 1;
+    
+//    if (searchText.length == 0) {
+//        [_data removeAllObjects];
+//    }else{
+        _searchText = searchText;
+        [_data removeAllObjects];
+        [self searchData:_searchText];
+//    }
+    
+}
+
+-(void)searchData:(NSString *) searchText{
+    
+    [IntnetPrompt hideIntnetPromptForView:self.view animated:YES];
+    [LoadingHUDView showLoadinginView:self.view];
+
+    NSString *str = [NSString stringWithFormat:@"%@%@",NEW_HEAD_LINK,SEARCH_BY_KEY_METHOD];
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    NSString *ss = [NSString stringWithFormat:@"%@",searchText];
+    NSString *dr = [NSString stringWithFormat:@"%i",dataRows];
+    
+    [params setValue:ss forKey:@"keyword"];
+    [params setValue:@20 forKey:@"pageSize"];
+    [params setValue:dr forKey:@"currentPage"];
+    [params setValue:APP_KEY forKey:@"appKey"];
+    
+    
+    [HTTPTool postWithPath:str params:params
+                   success:^(id success) {
+                       //根据加载次数决定是否刷新券的数据数组
+                       NSString *msg = [success objectForKey:@"msg"];
+                       
+                       if ([msg isEqualToString:@"success"]) {
+                           
+                           NSMutableArray *objListArray = [success objectForKey:@"objList"];
+                           
+                           for (int i = 0; i < objListArray.count; i++) {
+                               QuanKongVoucher *voucher = [QuanKongVoucher initWihtData:objListArray[i]];
+                               [_data addObject:voucher];
+                           }
+                        }
+                       
+                       if (_data.count == 0) {
+                           [Prompt showPromptWihtView:self.view message:@"没有搜索到相关票券"];
+                       }else{
+                           [Prompt removerPromptViewWithView:self.view animated:YES];
+                       }
+                       
+                       [self reloadData];
+                       
+                       [LoadingHUDView hideLoadingView];
+                   } fail:^(NSError *error) {
+                       
+                       [Prompt removerPromptViewWithView:self.view animated:YES];
+                       
+                       [LoadingHUDView hideLoadingView];
+                       
+                       [self.view.window showHUDWithText:@"网络链接错误，请检查您的网络！" Enabled:YES];
+                       
+                   }];
+    
+}
+
+
+-(NSInteger) numberOfSectionsInTableView:(UITableView *)tableView{
+    return 1;
+}
+
+-(NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+    return _data.count;
+}
+
+-(CGFloat) tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    return 95;
+}
+
+#pragma mark 每当有一个cell进入视野范围内就会调用，返回当前这行显示的cell
+-(UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+    QuanKongVoucher *voucher = _data[indexPath.row];
+    
+    NSString *identifier = [NSString stringWithFormat:@"status_%d",indexPath.section];
+    
+    couponLIstViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    
+    if (cell == nil) {
+        
+        cell = [[couponLIstViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+        
+        cell.backgroundColor = [UIColor whiteColor];
+        
+    }
+    
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    
+    //券的的图片
+    NSArray *arr = [voucher.picUrl componentsSeparatedByString:@";"];
+    [cell.logoImageView sd_setImageWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"%@%@",NEW_IMAGE_HEAD_LINK,arr[0]]] placeholderImage:[UIImage imageNamed:@"image_placeholder"] completed:nil];
+    
+    //券的名称
+    cell.titleLabel.text = voucher.name;
+    
+    //券的介绍
+    cell.introduceLabel.text = voucher.introduce;
+    
+    //券的类型
+    NSString *couponTypeStr = [NSString stringWithFormat:@"%i",voucher.type];
+    //券的折扣
+    //    NSString *discountStr = [NSString stringWithFormat:@"%i",self.voucher.discount];
+    
+    //根据couponTypeStr对不同的
+    switch ([couponTypeStr intValue]) {
+        case 1:
+        {
+            
+            //销售价格
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_0.png"];
+            
+            NSString *estimateStr = [[NSString alloc]init];
+            
+            estimateStr = [NSString stringWithFormat:@"%@元",voucher.estimateAmount];
+            
+            NSMutableAttributedString *estimateAmountStr = [[NSMutableAttributedString alloc]initWithString:estimateStr];
+            
+            [estimateAmountStr addAttribute:NSForegroundColorAttributeName
+                                      value:[UIColor orangeColor]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            [estimateAmountStr addAttribute:NSFontAttributeName
+                                      value:[UIFont systemFontOfSize:19.0f]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            cell.valueLabel.attributedText = estimateAmountStr;
+            
+            //原价
+            float estimateStrLength = [NSString widthOfString:estimateStr withFont:[UIFont systemFontOfSize:19.0f]];
+            
+            NSString *faceStr = [NSString stringWithFormat:@"%@元",voucher.faceValue];
+            
+            NSMutableAttributedString *faceValueStr = [[NSMutableAttributedString alloc]initWithString:faceStr];
+            
+            [faceValueStr addAttribute:NSStrikethroughStyleAttributeName
+                                 value:[NSNumber numberWithInteger:NSUnderlinePatternSolid | NSUnderlineStyleSingle]
+                                 range:NSMakeRange(0, faceStr.length)];
+            
+            cell.cutValueLabel.frame = CGRectMake(105+estimateStrLength+5, 69, WIDTH-estimateStrLength-120, 20);
+            cell.cutValueLabel.attributedText = faceValueStr;
+            
+        }
+            break;
+        case 2:
+        {
+            
+            NSString *debitValueStr = [NSString stringWithFormat:@"%@元",voucher.debitAmount];
+            
+            NSString *miniAmountStr = [NSString stringWithFormat:@"%d",voucher.miniAmount];
+            
+            NSMutableAttributedString *debitStr = [[NSMutableAttributedString alloc]init];
+            
+            voucher.miniAmount == 0?(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"立减%@",debitValueStr]]):(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%@元减%@",miniAmountStr,debitValueStr]]);
+            
+            voucher.miniAmount == 0?[debitStr addAttribute:NSForegroundColorAttributeName
+                                                     value:[UIColor orangeColor]
+                                                     range:NSMakeRange(2, debitValueStr.length)]
+                                   :[debitStr addAttribute:NSForegroundColorAttributeName
+                                                     value:[UIColor orangeColor]
+                                                     range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+            
+            voucher.miniAmount == 0?[debitStr addAttribute:NSFontAttributeName
+                                                     value:[UIFont systemFontOfSize:19.0f]
+                                                     range:NSMakeRange(2, debitValueStr.length)]
+                                   :[debitStr addAttribute:NSFontAttributeName
+                                                     value:[UIFont systemFontOfSize:19.0f]
+                                                     range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+            
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_2.png"];
+            
+            cell.valueLabel.attributedText = debitStr;
+            
+            cell.cutValueLabel.text = @"";
+        }
+            break;
+        case 3:
+        {
+            
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_1.png"];
+            
+            //折扣券信息字体大小颜色设置
+            NSString *discountStr = [[NSString alloc]init];
+            
+            voucher.discount%10 == 0?(discountStr = [NSString stringWithFormat:@"%.0f",voucher.discount*0.1]):(discountStr = [NSString stringWithFormat:@"%.1f",voucher.discount*0.1]);
+            
+            NSMutableAttributedString *countValueAtr = [[NSMutableAttributedString alloc]init];
+            NSString *miniAmountStr = [NSString stringWithFormat:@"%ld",(long)voucher.miniAmount];
+            
+            voucher.miniAmount == 0?(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"%@折",discountStr]]):(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%ld元享%@折",(long)voucher.miniAmount,discountStr]]);
+            
+            voucher.miniAmount == 0?[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                                     value:[UIColor orangeColor]
+                                                     range:NSMakeRange(0, 1+discountStr.length)]
+            :[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                   value:[UIColor orangeColor]
+                                   range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+            
+            voucher.miniAmount == 0?[countValueAtr addAttribute:NSFontAttributeName
+                                                     value:[UIFont systemFontOfSize:19.0f]
+                                                     range:NSMakeRange(0, 1+discountStr.length)]
+            :[countValueAtr addAttribute:NSFontAttributeName
+                                   value:[UIFont systemFontOfSize:19.0f]
+                                   range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+            
+            cell.valueLabel.textColor = [UIColor grayColor];
+            cell.valueLabel.font = [UIFont systemFontOfSize:12.0f];
+            cell.valueLabel.attributedText = countValueAtr;
+            cell.cutValueLabel.text = @"";
+        }
+            break;
+        default:
+            break;
+    }
+    
+    return cell;
+}
+
+-(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+    [msearchBar resignFirstResponder];
+    
+    QuanKongCouponDetailViewController *couponDetailViewController = [[QuanKongCouponDetailViewController alloc]init];
+    couponDetailViewController.hidesBottomBarWhenPushed = YES;
+    
+    QuanKongVoucher *voucher = _data[indexPath.row];
+    NSString *Id = [NSString stringWithFormat:@"%i",voucher.vocherId];
+    
+    NSString *url = [NSString stringWithFormat:@"%@%@&businessAccount=%@&appKey=%@",NEW_HEAD_LINK,BUSINESS_CHANNEL_METHOD,BUSINESS,APP_KEY];
+    [HTTPTool getWithPath:url success:^(id success) {
+        NSString * i = [success objectForKey:@"event"];
+        NSArray *arr = [success objectForKey:@"objList"];
+        NSDictionary *business =  arr[0];
+        NSString *ID = [business objectForKey:@"id"];
+        if ([i isEqualToString:@"0"]) {
+            [couponDetailViewController getCouponDetailWithCouponID:Id And:ID];
+            [self.navigationController pushViewController:couponDetailViewController animated:YES];
+        }else{
+            [self.view.window showHUDWithText:[success objectForKey:@"msg"]  Enabled:YES];
+        }
+    } fail:^(NSError *error) {
+        [self.view.window showHUDWithText:@"网络连接失败"  Enabled:YES];
+    }];
+    
+}
+
+
+@end

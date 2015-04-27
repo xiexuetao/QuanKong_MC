@@ -1,0 +1,566 @@
+//
+//  QuanKongNearViewController.m
+//  QuanKong
+//
+//  Created by POWER on 14-9-16.
+//  Copyright (c) 2014年 Rockcent. All rights reserved.
+//
+
+#import "QuanKongNearViewController.h"
+#import "QuanKongCouponDetailViewController.h"
+#import "NSString+DisposeStr.h"
+
+@interface QuanKongNearViewController ()
+
+@end
+
+@implementation QuanKongNearViewController{
+    
+    double longi;
+    double lati;
+    
+    //券信息数组
+    NSMutableArray *couponListArray;
+    
+    NSArray *imageURLs;
+    UIImageView *tabImageView;
+    NSString *tagStr;
+    
+    LoadMoreTableFooterView *loadMoreTableFooterView;
+    BOOL isLoadMoreing;
+    
+    int dataRows;
+}
+
+@synthesize locationBar_Bg;
+@synthesize locationLB;
+@synthesize nearCouponTableView;
+
+- (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
+{
+    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+    if (self) {
+        // Custom initialization
+        
+        self.view.backgroundColor = [UIColor whiteColor];
+        
+        //根据iOS版本判断界面起始位置
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 70000
+        
+        if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7.0)
+        {
+            self.edgesForExtendedLayout = UIRectEdgeNone;
+            self.extendedLayoutIncludesOpaqueBars = NO;
+            self.modalPresentationCapturesStatusBarAppearance = NO;
+        }
+        
+#endif
+        
+        UILabel *titleLabel = [[UILabel alloc]initWithFrame:CGRectMake(0, 0, 140, 30)];
+        titleLabel.backgroundColor = [UIColor clearColor];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        titleLabel.textColor = [UIColor whiteColor];
+        titleLabel.font = [UIFont systemFontOfSize:18.0];
+        titleLabel.text = @"附近的券";
+        
+        self.navigationItem.titleView = titleLabel;
+        
+        dataRows = 1;
+        
+    }
+    return self;
+}
+
+- (void)initLocationData
+{
+    _locService = [[BMKLocationService alloc]init];
+    _locService.delegate = self;
+    
+    _geocodesearch = [[BMKGeoCodeSearch alloc]init];
+    _geocodesearch.delegate = self;
+    
+    [_locService startUserLocationService];
+}
+
+- (void)initLocationBar
+{
+    locationBar_Bg = [[UIView alloc]initWithFrame:CGRectMake(0, HEIGHT-64-44-25, WIDTH, 20)];
+    locationBar_Bg.backgroundColor = [UIColor whiteColor];
+    locationBar_Bg.userInteractionEnabled = YES;
+    locationBar_Bg.alpha = 0.95;
+    
+    [self.view insertSubview:locationBar_Bg atIndex:3];
+    
+    locationLB = [[UILabel alloc]initWithFrame:CGRectMake(0, 0, WIDTH, 20)];
+    locationLB.backgroundColor = [UIColor clearColor];
+    locationLB.textAlignment = NSTextAlignmentCenter;
+    locationLB.textColor = [UIColor grayColor];
+    locationLB.font = [UIFont systemFontOfSize:11.0f];
+    
+    [locationBar_Bg addSubview:locationLB];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    if (!nearCouponTableView) {
+        
+        [LoadingHUDView showLoadinginView:self.view];
+        
+        [self initLocationData];
+    }
+}
+
+#pragma mark-BMKLocationServiceDelegate
+
+//实现相关delegate 处理位置信息更新
+//处理方向变更信息
+- (void)didUpdateUserHeading:(BMKUserLocation *)userLocation
+{
+    //    NSLog(@"heading is %@",userLocation.heading);
+}
+
+//处理位置坐标更新
+- (void)didUpdateUserLocation:(BMKUserLocation *)userLocation
+{
+    NSLog(@"didUpdateUserLocation lat %f,long %f",userLocation.location.coordinate.latitude,userLocation.location.coordinate.longitude);
+    [_locService stopUserLocationService];
+    
+    BMKReverseGeoCodeOption *reverseGeocodeSearchOption = [[BMKReverseGeoCodeOption alloc]init];
+    
+    longi = userLocation.location.coordinate.longitude;
+    lati = userLocation.location.coordinate.latitude;
+    
+    CLLocationCoordinate2D pt = (CLLocationCoordinate2D){userLocation.location.coordinate.latitude,userLocation.location.coordinate.longitude};
+    reverseGeocodeSearchOption.reverseGeoPoint = pt;
+    
+    BOOL flag = [_geocodesearch reverseGeoCode:reverseGeocodeSearchOption];
+    
+    if(flag)
+    {
+        NSLog(@"反geo检索发送成功");
+        
+    }
+    else
+    {
+        NSLog(@"反geo检索发送失败");
+    }
+}
+
+#pragma mark-BMKGeoCodeSearchDelegate
+/**
+ *  反地理编码请求成功后回调传递位置
+ *
+ *
+ */
+-(void) onGetReverseGeoCodeResult:(BMKGeoCodeSearch *)searcher result:(BMKReverseGeoCodeResult *)result errorCode:(BMKSearchErrorCode)error
+{
+    
+    if (error == 0) {
+        
+        NSLog(@"%@",result.address);
+        
+        NSLog(@"%@",result.addressDetail.city);
+        
+        [self initLocationBar];
+        
+        locationLB.text = result.address;
+        
+        [self getNearCouponDataWith:@"1" And:longi And:lati];
+        
+    }
+}
+
+- (void)emptyViewWith:(NSString *)string
+{
+    UILabel *emptype = [[UILabel alloc]initWithFrame:CGRectMake(0, HEIGHT/2-60, WIDTH, 40)];
+    emptype.backgroundColor = [UIColor clearColor];
+    emptype.font = [UIFont systemFontOfSize:16.0f];
+    emptype.textAlignment = NSTextAlignmentCenter;
+    emptype.numberOfLines = 0;
+    emptype.textColor = [UIColor lightGrayColor];
+    emptype.text = string;
+    
+    [self.view addSubview:emptype];
+}
+
+
+- (void)getNearCouponDataWith:(NSString *)couponPage And:(double)longitude And:(double)latitude
+{
+    
+    NSString *nearCouponUrlStr = [NSString stringWithFormat:@"%@%@&longitude=%f&latitude=%f&currentPage=%@&pageSize=20&appKey=%@",NEW_HEAD_LINK,LIST_NEAR_COUPON,longitude,latitude,couponPage,APP_KEY];
+    
+    [HTTPTool getWithPath:nearCouponUrlStr success:^(id success) {
+        
+        NSString *msg = [success objectForKey:@"msg"];
+        
+        if([msg isEqualToString:@"success"]) {
+            
+            //根据加载次数决定是否刷新券的数据数组
+            //页面初始化时，重设数据数组
+            
+            if (dataRows == 1) {
+                
+                couponListArray = [[NSMutableArray alloc]initWithCapacity:0];
+            }
+            
+            int listCount = ((NSMutableArray *)[success objectForKey:@"objList"]).count;
+            
+            for (int i = 0; i < listCount; i++) {
+                
+                [couponListArray addObject:[QuanKongVoucher initWihtData:[[success objectForKey:@"objList"]objectAtIndex:i]]];
+                
+            }
+            
+            listCount > 0?[self initCouponTableView]:[self emptyViewWith:@"亲，你附近没有券哦"];
+            
+            [LoadingHUDView hideLoadingView];
+        }
+        
+    } fail:^(NSError *error) {
+        
+        NSLog(@"fail");
+        
+        [LoadingHUDView showLoadinginView:self.view];
+        
+    }];
+}
+
+//创建券的列表
+//Peter
+- (void)initCouponTableView
+{
+    isLoadMoreing = NO;
+    
+    if (!nearCouponTableView) {
+        
+        nearCouponTableView = [[UITableView alloc]initWithFrame:CGRectMake(0, 0, WIDTH, HEIGHT-64-45) style:UITableViewStylePlain];
+        nearCouponTableView.delegate = self;
+        nearCouponTableView.dataSource = self;
+        nearCouponTableView.backgroundColor = [UIColor clearColor];
+        nearCouponTableView.separatorColor = LIGHT_GRAY;
+        
+        NSLog(@"创建");
+        
+    } else {
+        
+        [nearCouponTableView reloadData];
+        
+        NSLog(@"更新");
+    }
+    
+    //创建上拉加载更多控件
+    if (loadMoreTableFooterView == nil) {
+        
+        loadMoreTableFooterView = [[LoadMoreTableFooterView alloc]initWithFrame:CGRectMake(0.0f, nearCouponTableView.contentSize.height, nearCouponTableView.frame.size.width, nearCouponTableView.bounds.size.height)];
+        
+        loadMoreTableFooterView.delegate = self;
+        
+        [nearCouponTableView addSubview:loadMoreTableFooterView];
+        
+    }
+    
+    [self.view insertSubview:nearCouponTableView belowSubview:locationBar_Bg];
+    
+    [self reloadData];
+}
+
+#pragma mark - tableView delegate
+
+//方法类型：系统方法
+//编   写：peter
+//方法功能：返回section的个数
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    // Return the number of sections.
+    return 1;
+}
+
+//方法类型：系统方法
+//编   写：peter
+//方法功能：返回tableViewCell 的个数 = 问题的个数
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return [couponListArray count];
+}
+
+//方法类型：系统方法
+//编   写：peter
+//方法功能：定义tableViewCell的高度
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+    return 95;
+}
+
+//方法类型：系统方法
+//编   写：peter
+//方法功能：定义tableVlewCell 的样式
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSString *identifier = [NSString stringWithFormat:@"status_%d",indexPath.section];
+    
+    couponLIstViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    
+    QuanKongVoucher *couponDic = [couponListArray objectAtIndex:indexPath.row];
+    
+    if (cell == nil) {
+        
+        cell = [[couponLIstViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+        
+        cell.backgroundColor = [UIColor whiteColor];
+        
+    }
+    
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    
+    //券的的图片
+    NSArray *picArray = [couponDic.picUrl componentsSeparatedByString:@";"];
+    
+    //券的的图片
+    [cell.logoImageView sd_setImageWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"%@%@",NEW_IMAGE_HEAD_LINK,[picArray objectAtIndex:0]]] placeholderImage:[UIImage imageNamed:@"image_placeholder"] completed:nil];
+    
+    //券的名称
+    cell.titleLabel.text = couponDic.name;
+    
+    //券的介绍
+    cell.introduceLabel.text = couponDic.introduce;
+    
+    //券的距离
+    cell.distanceLabel.text = [NSString stringWithFormat:@"%@米",couponDic.distance];
+    
+    //券的折扣
+    NSString *discountStr = [NSString stringWithFormat:@"%i",couponDic.discount];
+    
+    //根据couponTypeStr对不同的
+    switch (couponDic.type) {
+        case 0:
+        {
+            
+            //销售价格
+            cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_0.png"];
+            
+            NSString *estimateStr = [[NSString alloc]init];
+            
+            estimateStr = [NSString stringWithFormat:@"%@元",couponDic.estimateAmount];
+            
+            NSMutableAttributedString *estimateAmountStr = [[NSMutableAttributedString alloc]initWithString:estimateStr];
+            
+            [estimateAmountStr addAttribute:NSForegroundColorAttributeName
+                                      value:[UIColor orangeColor]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            [estimateAmountStr addAttribute:NSFontAttributeName
+                                      value:[UIFont systemFontOfSize:19.0f]
+                                      range:NSMakeRange(0, estimateStr.length)];
+            
+            cell.valueLabel.attributedText = estimateAmountStr;
+            
+            //原价
+            float estimateStrLength = [NSString widthOfString:estimateStr withFont:[UIFont systemFontOfSize:19.0f]];
+            
+            NSString *faceStr = [NSString stringWithFormat:@"%@元",couponDic.faceValue];
+            
+            NSMutableAttributedString *faceValueStr = [[NSMutableAttributedString alloc]initWithString:faceStr];
+            
+            [faceValueStr addAttribute:NSStrikethroughStyleAttributeName
+                                 value:[NSNumber numberWithInteger:NSUnderlinePatternSolid | NSUnderlineStyleSingle]
+                                 range:NSMakeRange(0, faceStr.length)];
+            
+            cell.cutValueLabel.frame = CGRectMake(105+estimateStrLength+5, 69, WIDTH-estimateStrLength-120, 20);
+            cell.cutValueLabel.attributedText = faceValueStr;
+            
+        }
+            break;
+        case 1:
+        {
+            if ([discountStr intValue] > 0) {
+                
+                cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_1.png"];
+                
+                //折扣券信息字体大小颜色设置
+                NSString *discountStr = [[NSString alloc]init];
+                
+                couponDic.discount%10 == 0?(discountStr = [NSString stringWithFormat:@"%.0f",couponDic.discount*0.1]):(discountStr = [NSString stringWithFormat:@"%.1f",couponDic.discount*0.1]);
+                
+                NSMutableAttributedString *countValueAtr = [[NSMutableAttributedString alloc]init];
+                NSString *miniAmountStr = [NSString stringWithFormat:@"%ld",(long)couponDic.miniAmount];
+                
+                couponDic.miniAmount == 0?(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"%@折",discountStr]]):(countValueAtr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%ld元享%@折",(long)couponDic.miniAmount,discountStr]]);
+                
+                couponDic.miniAmount == 0?[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                                                value:[UIColor orangeColor]
+                                                                range:NSMakeRange(0, 1+discountStr.length)]
+                :[countValueAtr addAttribute:NSForegroundColorAttributeName
+                                       value:[UIColor orangeColor]
+                                       range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+                
+                couponDic.miniAmount == 0?[countValueAtr addAttribute:NSFontAttributeName
+                                                                value:[UIFont systemFontOfSize:19.0f]
+                                                                range:NSMakeRange(0, 1+discountStr.length)]
+                :[countValueAtr addAttribute:NSFontAttributeName
+                                       value:[UIFont systemFontOfSize:19.0f]
+                                       range:NSMakeRange(3+miniAmountStr.length, 1+discountStr.length)];
+                
+                cell.valueLabel.attributedText = countValueAtr;
+                
+                cell.cutValueLabel.text = @"";
+                
+            } else {
+                
+                NSString *debitValueStr = [NSString stringWithFormat:@"%@元",couponDic.debitAmount];
+                
+                NSString *miniAmountStr = [NSString stringWithFormat:@"%d",couponDic.miniAmount];
+                
+                NSMutableAttributedString *debitStr = [[NSMutableAttributedString alloc]init];
+                
+                couponDic.miniAmount == 0?(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"立减%@",debitValueStr]]):(debitStr = [[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"满%@元减%@",miniAmountStr,debitValueStr]]);
+                
+                couponDic.miniAmount == 0?[debitStr addAttribute:NSForegroundColorAttributeName
+                                                           value:[UIColor orangeColor]
+                                                           range:NSMakeRange(2, debitValueStr.length)]
+                :[debitStr addAttribute:NSForegroundColorAttributeName
+                                  value:[UIColor orangeColor]
+                                  range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+                
+                couponDic.miniAmount == 0?[debitStr addAttribute:NSFontAttributeName
+                                                           value:[UIFont systemFontOfSize:19.0f]
+                                                           range:NSMakeRange(2, debitValueStr.length)]
+                :[debitStr addAttribute:NSFontAttributeName
+                                  value:[UIFont systemFontOfSize:19.0f]
+                                  range:NSMakeRange(3+miniAmountStr.length, debitValueStr.length)];
+                
+                cell.typeTagImageView.image = [UIImage imageNamed:@"coupon_type_2.png"];
+                
+                cell.valueLabel.attributedText = debitStr;
+                
+                cell.cutValueLabel.text = @"";
+            }
+        }
+            break;
+        default:
+            break;
+    }
+    
+    return cell;
+}
+
+- (void)reloadData
+{
+    [nearCouponTableView reloadData];
+    
+    [loadMoreTableFooterView loadMoreScrollViewDataSourceDidFinishedLoading:nearCouponTableView];
+    
+    loadMoreTableFooterView.frame = CGRectMake(0.0f, nearCouponTableView.contentSize.height, nearCouponTableView.frame.size.width, nearCouponTableView.bounds.size.height);
+}
+
+#pragma mark UIScrollViewDelegate Methods
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    [loadMoreTableFooterView loadMoreScrollViewDidScroll:scrollView];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    [loadMoreTableFooterView loadMoreScrollViewDidEndDragging:scrollView];
+}
+
+#pragma mark LoadMoreTableFooterDelegate Methods
+
+- (void)loadMoreTableFooterDidTriggerLoadMore:(LoadMoreTableFooterView*)view
+{
+    isLoadMoreing = YES;
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        
+        // waiting for loading data from internet
+        sleep(3);
+        
+        dataRows++;
+        
+        [self getNearCouponDataWith:[NSString stringWithFormat:@"%d",dataRows] And:longi And:lati];
+        
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            
+            // complete loading...
+            isLoadMoreing = NO;
+            
+            [self reloadData];
+            
+        });
+    });
+}
+
+- (BOOL)loadMoreTableFooterDataSourceIsLoading:(LoadMoreTableFooterView*)view
+{
+    return isLoadMoreing;
+}
+
+#pragma mark - cell separator delegate
+
+-(void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    // iOS 7
+    if ([cell respondsToSelector:@selector(setSeparatorInset:)]) {
+        [cell setSeparatorInset:UIEdgeInsetsMake(0, 10, 0, 0)];
+    }
+    // iOS 8
+    if ([cell respondsToSelector:@selector(setLayoutMargins:)]) {
+        [cell setLayoutMargins:UIEdgeInsetsMake(0, 10, 0, 0)];
+    }
+}
+
+-(void)viewDidLayoutSubviews
+{
+    // iOS 7
+    if ([nearCouponTableView respondsToSelector:@selector(setSeparatorInset:)]) {
+        [nearCouponTableView setSeparatorInset:UIEdgeInsetsMake(0, 10, 0, 0)];
+    }
+    // iOS 8
+    if ([nearCouponTableView respondsToSelector:@selector(setLayoutMargins:)]) {
+        [nearCouponTableView setLayoutMargins:UIEdgeInsetsMake(0, 10, 0, 0)];
+    }
+}
+
+#pragma mark - tableView did_Select delegate
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    QuanKongVoucher *couponDic = [couponListArray objectAtIndex:indexPath.row];
+    
+    QuanKongCouponDetailViewController *couponDetailViewController = [[QuanKongCouponDetailViewController alloc]init];
+    
+    couponDetailViewController.hidesBottomBarWhenPushed = YES;
+    
+    
+    NSString *url = [NSString stringWithFormat:@"%@%@&businessAccount=%@&appKey=%@",NEW_HEAD_LINK,BUSINESS_CHANNEL_METHOD,BUSINESS,APP_KEY];
+    [HTTPTool getWithPath:url success:^(id success) {
+        NSString * i = [success objectForKey:@"event"];
+        NSArray *arr = [success objectForKey:@"objList"];
+        NSDictionary *business =  arr[0];
+        NSString *ID = [business objectForKey:@"id"];
+        if ([i isEqualToString:@"0"]) {
+            [couponDetailViewController getCouponDetailWithCouponID:[NSString stringWithFormat:@"%i",couponDic.vocherId]And:ID];
+            [self.navigationController pushViewController:couponDetailViewController animated:YES];
+        }else{
+            [self.view.window showHUDWithText:[success objectForKey:@"msg"]  Enabled:YES];
+        }
+    } fail:^(NSError *error) {
+        [self.view.window showHUDWithText:@"网络连接失败"  Enabled:YES];
+    }];
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    
+    // Do any additional setup after loading the view.
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+
+@end
